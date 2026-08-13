@@ -1,4 +1,3 @@
-
 package com.example.gdtvlive;
 
 import android.app.Activity;
@@ -9,7 +8,6 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.CustomViewCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -24,7 +22,7 @@ public class MainActivity extends Activity {
     private TextView channelLabel;
     private int currentIndex = 0;
     private View customView;
-    private CustomViewCallback customViewCallback;
+    private WebChromeClient.CustomViewCallback customViewCallback;
     private boolean dialogShowing = false;
 
     private String[] channelNames = {
@@ -79,7 +77,7 @@ public class MainActivity extends Activity {
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
-            public void onShowCustomView(View view, CustomViewCallback callback) {
+            public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
                 if (customView != null) {
                     callback.onCustomViewHidden();
                     return;
