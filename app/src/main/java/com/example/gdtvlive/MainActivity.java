@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.ActivityInfo;
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
@@ -25,21 +26,22 @@ public class MainActivity extends Activity {
     private WebChromeClient.CustomViewCallback customViewCallback;
     private boolean dialogShowing = false;
 
+    // 广东台频道列表（频道名称和ID对应）
     private String[] channelNames = {
-        "广东卫视(43)",
-        "频道42",
-        "频道44",
-        "频道45",
-        "频道46",
-        "频道47",
-        "频道48",
-        "频道49",
-        "频道50",
-        "频道1"
+        "广东卫视",
+        "珠江频道",
+        "体育频道",
+        "新闻频道",
+        "公共频道",
+        "嘉佳卡通",
+        "南方卫视",
+        "影视频道",
+        "少儿频道",
+        "房产频道"
     };
 
     private String[] channelIds = {
-        "43", "42", "44", "45", "46", "47", "48", "49", "50", "1"
+        "43", "44", "45", "46", "47", "48", "49", "50", "51", "52"
     };
 
     private static final String BASE_URL = "https://www.gdtv.cn/tvChannelDetail/";
@@ -63,6 +65,12 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                channelLabel.setText("正在加载: " + channelNames[currentIndex]);
+                channelLabel.setVisibility(View.VISIBLE);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 channelLabel.setText("正在播放: " + channelNames[currentIndex]);
                 channelLabel.setVisibility(View.VISIBLE);
@@ -72,6 +80,13 @@ public class MainActivity extends Activity {
                         channelLabel.setVisibility(View.GONE);
                     }
                 }, 3000);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                channelLabel.setText("加载失败，请检查网络");
+                channelLabel.setVisibility(View.VISIBLE);
+                Toast.makeText(MainActivity.this, "加载失败: " + description, Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -104,6 +119,14 @@ public class MainActivity extends Activity {
                     webView.setVisibility(View.VISIBLE);
                 }
             }
+
+            @Override
+            public void onProgressChanged(WebView view, int newProgress) {
+                if (newProgress < 100) {
+                    channelLabel.setText("加载中... " + newProgress + "%");
+                    channelLabel.setVisibility(View.VISIBLE);
+                }
+            }
         });
 
         loadChannel(currentIndex);
@@ -123,9 +146,16 @@ public class MainActivity extends Activity {
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setPluginState(WebSettings.PluginState.ON);
+        
+        // 使用兼容的 UA
         settings.setUserAgentString(
             "Mozilla/5.0 (Linux; Android 4.4.2; Build/KOT49H) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/30.0.1599.105 Mobile Safari/537.36"
+            "(KHTML, like Gecko) Version/4.0 Chrome/30.0.0.0 Mobile Safari/537.36"
         );
     }
 
@@ -144,7 +174,7 @@ public class MainActivity extends Activity {
     private void showChannelList() {
         dialogShowing = true;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("选择频道");
+        builder.setTitle("选择频道（当前: " + channelNames[currentIndex] + "）");
         builder.setItems(channelNames, new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
@@ -186,9 +216,11 @@ public class MainActivity extends Activity {
             int keyCode = event.getKeyCode();
             switch (keyCode) {
                 case KeyEvent.KEYCODE_DPAD_UP:
+                case KeyEvent.KEYCODE_CHANNEL_UP:
                     switchChannel(currentIndex - 1);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_DOWN:
+                case KeyEvent.KEYCODE_CHANNEL_DOWN:
                     switchChannel(currentIndex + 1);
                     return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
