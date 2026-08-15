@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -25,8 +26,9 @@ public class MainActivity extends Activity {
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
     private boolean dialogShowing = false;
+    private boolean isVideoPlaying = false;
 
-    // 广东台频道列表（频道名称和ID对应）
+    // 广东台频道列表（根据实际频道ID调整）
     private String[] channelNames = {
         "广东卫视",
         "珠江频道",
@@ -45,6 +47,62 @@ public class MainActivity extends Activity {
     };
 
     private static final String BASE_URL = "https://www.gdtv.cn/tvChannelDetail/";
+
+    // JS 注入脚本：自动播放视频
+    private static final String AUTO_PLAY_JS = 
+        "javascript:(function() {" +
+        "    function tryPlayVideo() {" +
+        "        var videos = document.querySelectorAll('video');" +
+        "        if (videos.length > 0) {" +
+        "            var video = videos[0];" +
+        "            video.muted = false;" +
+        "            video.autoplay = true;" +
+        "            video.controls = true;" +
+        "            video.setAttribute('playsinline', 'true');" +
+        "            video.setAttribute('webkit-playsinline', 'true');" +
+        "            video.play().then(function() {" +
+        "                if (video.requestFullscreen) {" +
+        "                    video.requestFullscreen();" +
+        "                } else if (video.webkitRequestFullscreen) {" +
+        "                    video.webkitRequestFullscreen();" +
+        "                }" +
+        "            }).catch(function(e) {" +
+        "                console.log('Play failed: ' + e);" +
+        "            });" +
+        "            return true;" +
+        "        }" +
+        "        return false;" +
+        "    }" +
+        "    " +
+        "    // 立即尝试播放" +
+        "    if (!tryPlayVideo()) {" +
+        "        // 如果没找到 video，等待 DOM 加载" +
+        "        var observer = new MutationObserver(function(mutations) {" +
+        "            if (tryPlayVideo()) {" +
+        "                observer.disconnect();" +
+        "            }" +
+        "        });" +
+        "        observer.observe(document.body, { childList: true, subtree: true });" +
+        "        " +
+        "        // 5秒后再次尝试" +
+        "        setTimeout(function() {" +
+        "            tryPlayVideo();" +
+        "        }, 5000);" +
+        "    }" +
+        "})();";
+
+    // JS 注入脚本：点击播放按钮
+    private static final String CLICK_PLAY_JS = 
+        "javascript:(function() {" +
+        "    var playButtons = document.querySelectorAll('.play-btn, .play-button, .vjs-big-play-button, [class*=play], [id*=play]');" +
+        "    for (var i = 0; i < playButtons.length; i++) {" +
+        "        playButtons[i].click();" +
+        "    }" +
+        "    var videos = document.querySelectorAll('video');" +
+        "    for (var j = 0; j < videos.length; j++) {" +
+        "        videos[j].play();" +
+        "    }" +
+        "})();";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,7 +132,24 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 channelLabel.setText("正在播放: " + channelNames[currentIndex]);
                 channelLabel.setVisibility(View.VISIBLE);
-                webView.postDelayed(new Runnable() {
+                
+                // 页面加载完成后，延迟执行自动播放脚本
+                view.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        injectAutoPlayScript();
+                    }
+                }, 2000);
+                
+                view.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        injectAutoPlayScript();
+                    }
+                }, 5000);
+                
+                // 隐藏频道标签
+                view.postDelayed(new Runnable() {
                     @Override
                     public void run() {
                         channelLabel.setVisibility(View.GONE);
@@ -104,6 +179,7 @@ public class MainActivity extends Activity {
                         new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
                 webView.setVisibility(View.GONE);
+                isVideoPlaying = true;
             }
 
             @Override
@@ -117,12 +193,13 @@ public class MainActivity extends Activity {
                         customViewCallback.onCustomViewHidden();
                     }
                     webView.setVisibility(View.VISIBLE);
+                    isVideoPlaying = false;
                 }
             }
 
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
-                if (newProgress < 100) {
+                if (newProgress < 100 && !isVideoPlaying) {
                     channelLabel.setText("加载中... " + newProgress + "%");
                     channelLabel.setVisibility(View.VISIBLE);
                 }
@@ -152,11 +229,26 @@ public class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setPluginState(WebSettings.PluginState.ON);
         
-        // 使用兼容的 UA
+        // 关键：模拟 TV 浏览器 UA，绕过移动端适配
         settings.setUserAgentString(
-            "Mozilla/5.0 (Linux; Android 4.4.2; Build/KOT49H) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Version/4.0 Chrome/30.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 4.4.2; SmartTV; Build/KOT49H) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.114 " +
+            "Safari/537.36 TVBrowser/1.0"
         );
+    }
+
+    private void injectAutoPlayScript() {
+        if (webView != null) {
+            // 注入自动播放脚本
+            webView.loadUrl(AUTO_PLAY_JS);
+            // 延迟后注入点击播放脚本
+            webView.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    webView.loadUrl(CLICK_PLAY_JS);
+                }
+            }, 1000);
+        }
     }
 
     private void loadChannel(int index) {
@@ -245,7 +337,11 @@ public class MainActivity extends Activity {
                     }
                     return true;
                 case KeyEvent.KEYCODE_BACK:
-                    if (webView.canGoBack()) {
+                    if (isVideoPlaying) {
+                        // 如果视频全屏，先退出全屏
+                        webView.loadUrl("javascript:document.exitFullscreen();");
+                        return true;
+                    } else if (webView.canGoBack()) {
                         webView.goBack();
                     } else {
                         finish();
